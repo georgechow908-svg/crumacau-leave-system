@@ -293,7 +293,7 @@ function ApplyForm({ onSubmit }) {
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-slate-700 mb-1">請假類別</label>
+          <label className="block text-sm font-medium text-slate-700 mb-1">申請類別</label>
           <div className="grid grid-cols-2 gap-2">
             {LEAVE_TYPES.map(type => (
               <label key={type.id} className={`
@@ -316,7 +316,7 @@ function ApplyForm({ onSubmit }) {
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-slate-700 mb-1">請假原因 / 備註</label>
+          <label className="block text-sm font-medium text-slate-700 mb-1">申請原因 / 備註</label>
           <textarea
             className="w-full p-2 border border-slate-300 rounded focus:ring-2 focus:ring-indigo-500 outline-none h-24"
             placeholder="請簡述原因..."
@@ -370,7 +370,7 @@ function AdminDashboard({ leaves, onUpdateStatus, onDeleteLeave, onResetStatus }
   // 匯出 CSV 功能
   const exportToCSV = () => {
     // CSV 標頭
-    let csvContent = "同工姓名,開始日期,結束日期,請假天數,請假類別,原因,狀態\n";
+    let csvContent = "同工姓名,開始日期,結束日期,請假天數,申請類別,原因,狀態\n";
     
     // CSV 內容
     leaves.forEach(leave => {
