@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Calendar, CheckCircle, XCircle, Clock, FileText, ChevronLeft, ChevronRight, PlusCircle, LayoutDashboard, Cloud } from 'lucide-react';
+import { Calendar, CheckCircle, XCircle, Clock, FileText, ChevronLeft, ChevronRight, PlusCircle, LayoutDashboard, Cloud, Download, BarChart2 } from 'lucide-react';
 
 // Firebase SDK Imports
 import { initializeApp } from 'firebase/app';
@@ -207,6 +207,13 @@ function ApplyForm({ onSubmit }) {
   const handleSubmit = (e) => {
     e.preventDefault();
     if (!formData.name || !formData.startDate || !formData.endDate) return;
+    
+    // 簡單驗證結束日期不能早於開始日期
+    if (new Date(formData.endDate) < new Date(formData.startDate)) {
+      alert("結束日期不能早於開始日期！");
+      return;
+    }
+    
     onSubmit(formData);
     setFormData({ name: '', startDate: '', endDate: '', type: '事工', reason: '' });
   };
@@ -298,6 +305,64 @@ function AdminDashboard({ leaves, onUpdateStatus }) {
   const pendingLeaves = leaves.filter(l => l.status === 'Pending');
   const historyLeaves = leaves.filter(l => l.status !== 'Pending');
 
+  // 計算請假天數的輔助函數
+  const calculateDays = (start, end) => {
+    const s = new Date(start);
+    const e = new Date(end);
+    const diffTime = Math.abs(e - s);
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1; 
+    return diffDays;
+  };
+
+  // 生成匯總資料 (僅計算已批准的假單)
+  const generateSummary = () => {
+    const summary = {};
+    leaves.filter(l => l.status === 'Approved').forEach(leave => {
+      const days = calculateDays(leave.startDate, leave.endDate);
+      if (!summary[leave.name]) {
+        summary[leave.name] = { total: 0, work: 0, personal: 0, sick: 0, other: 0 };
+      }
+      summary[leave.name].total += days;
+      if (leave.type === '事工') summary[leave.name].work += days;
+      else if (leave.type === '私人') summary[leave.name].personal += days;
+      else if (leave.type === '生病') summary[leave.name].sick += days;
+      else summary[leave.name].other += days;
+    });
+    
+    return Object.entries(summary).map(([name, data]) => ({
+      name, ...data
+    })).sort((a, b) => b.total - a.total); // 依總天數排序
+  };
+
+  const summaryData = generateSummary();
+
+  // 匯出 CSV 功能
+  const exportToCSV = () => {
+    // CSV 標頭
+    let csvContent = "員工姓名,開始日期,結束日期,請假天數,請假類別,原因,狀態\n";
+    
+    // CSV 內容
+    leaves.forEach(leave => {
+      const days = calculateDays(leave.startDate, leave.endDate);
+      // 處理原因中的換行或逗號，避免破壞 CSV 格式
+      const safeReason = `"${(leave.reason || '').replace(/"/g, '""')}"`;
+      let statusText = leave.status === 'Approved' ? '已批准' : leave.status === 'Rejected' ? '已拒絕' : '待審批';
+      
+      csvContent += `${leave.name},${leave.startDate},${leave.endDate},${days},${leave.type},${safeReason},${statusText}\n`;
+    });
+
+    // 加上 BOM 讓 Excel 能正確辨識中文 (UTF-8)
+    const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement("a");
+    const url = URL.createObjectURL(blob);
+    link.setAttribute("href", url);
+    link.setAttribute("download", `請假紀錄匯出_${new Date().toISOString().split('T')[0]}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   return (
     <div className="space-y-8 animate-fade-in">
       {/* 待審批區塊 */}
@@ -314,45 +379,91 @@ function AdminDashboard({ leaves, onUpdateStatus }) {
         ) : (
           <div className="grid gap-4">
             {pendingLeaves.map(leave => (
-              <LeaveCard key={leave.id} leave={leave} isAdmin={true} onUpdateStatus={onUpdateStatus} />
+              <LeaveCard key={leave.id} leave={leave} isAdmin={true} onUpdateStatus={onUpdateStatus} calculateDays={calculateDays} />
             ))}
           </div>
         )}
       </section>
 
-      {/* 歷史記錄 */}
-      <section>
-        <h2 className="text-xl font-bold mb-4 text-slate-700">最近審批記錄</h2>
-        <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-          <table className="w-full text-left text-sm">
-            <thead className="bg-slate-50 border-b border-slate-200">
-              <tr>
-                <th className="p-3 font-semibold text-slate-600">員工</th>
-                <th className="p-3 font-semibold text-slate-600">日期</th>
-                <th className="p-3 font-semibold text-slate-600">類別</th>
-                <th className="p-3 font-semibold text-slate-600">狀態</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {historyLeaves.map(leave => (
-                <tr key={leave.id}>
-                  <td className="p-3">{leave.name}</td>
-                  <td className="p-3 text-slate-500">{leave.startDate}</td>
-                  <td className="p-3">
-                    <span className={`px-2 py-0.5 rounded text-xs ${LEAVE_TYPES.find(t => t.label === leave.type)?.color || 'bg-gray-100'}`}>
-                      {leave.type}
-                    </span>
-                  </td>
-                  <td className="p-3">
-                    <StatusBadge status={leave.status} />
-                  </td>
-                </tr>
-              ))}
-              {historyLeaves.length === 0 && (
-                 <tr><td colSpan="4" className="p-4 text-center text-slate-400">尚無記錄</td></tr>
-              )}
-            </tbody>
-          </table>
+      {/* 歷史記錄與報表區塊 */}
+      <section className="grid md:grid-cols-2 gap-8">
+        
+        {/* 左側：歷史記錄 */}
+        <div>
+          <div className="flex justify-between items-end mb-4">
+            <h2 className="text-xl font-bold text-slate-700">最近審批記錄</h2>
+          </div>
+          <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+            <div className="max-h-[400px] overflow-y-auto">
+              <table className="w-full text-left text-sm">
+                <thead className="bg-slate-50 border-b border-slate-200 sticky top-0">
+                  <tr>
+                    <th className="p-3 font-semibold text-slate-600">員工</th>
+                    <th className="p-3 font-semibold text-slate-600">日期</th>
+                    <th className="p-3 font-semibold text-slate-600">狀態</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {historyLeaves.map(leave => (
+                    <tr key={leave.id} className="hover:bg-slate-50">
+                      <td className="p-3 font-medium">{leave.name}</td>
+                      <td className="p-3 text-slate-500 text-xs">{leave.startDate}</td>
+                      <td className="p-3">
+                        <StatusBadge status={leave.status} />
+                      </td>
+                    </tr>
+                  ))}
+                  {historyLeaves.length === 0 && (
+                     <tr><td colSpan="3" className="p-4 text-center text-slate-400">尚無記錄</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        {/* 右側：資料匯總與匯出 */}
+        <div>
+          <div className="flex justify-between items-end mb-4">
+            <h2 className="text-xl font-bold text-slate-700 flex items-center gap-2">
+              <BarChart2 className="w-5 h-5 text-indigo-500" />
+              員工請假匯總 (已批准)
+            </h2>
+            <button 
+              onClick={exportToCSV}
+              className="flex items-center gap-1 text-sm bg-indigo-50 text-indigo-700 hover:bg-indigo-100 px-3 py-1.5 rounded-md transition-colors font-medium border border-indigo-200"
+            >
+              <Download size={16} /> 匯出 CSV 報表
+            </button>
+          </div>
+          
+          <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+             <table className="w-full text-left text-sm">
+                <thead className="bg-slate-50 border-b border-slate-200">
+                  <tr>
+                    <th className="p-3 font-semibold text-slate-600">員工</th>
+                    <th className="p-3 font-semibold text-center text-slate-600">總天數</th>
+                    <th className="p-3 font-semibold text-center text-blue-600">事工</th>
+                    <th className="p-3 font-semibold text-center text-green-600">私人</th>
+                    <th className="p-3 font-semibold text-center text-red-600">生病</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {summaryData.map(stat => (
+                    <tr key={stat.name} className="hover:bg-slate-50">
+                      <td className="p-3 font-bold text-slate-700">{stat.name}</td>
+                      <td className="p-3 text-center font-bold bg-slate-50">{stat.total}</td>
+                      <td className="p-3 text-center text-slate-500">{stat.work || '-'}</td>
+                      <td className="p-3 text-center text-slate-500">{stat.personal || '-'}</td>
+                      <td className="p-3 text-center text-slate-500">{stat.sick || '-'}</td>
+                    </tr>
+                  ))}
+                  {summaryData.length === 0 && (
+                     <tr><td colSpan="5" className="p-4 text-center text-slate-400">尚無已批准的紀錄</td></tr>
+                  )}
+                </tbody>
+              </table>
+          </div>
         </div>
       </section>
     </div>
@@ -459,8 +570,9 @@ function CalendarView({ leaves }) {
 }
 
 // 通用組件：請假卡片
-function LeaveCard({ leave, isAdmin, onUpdateStatus }) {
+function LeaveCard({ leave, isAdmin, onUpdateStatus, calculateDays }) {
   const typeStyle = LEAVE_TYPES.find(t => t.label === leave.type)?.color;
+  const days = calculateDays ? calculateDays(leave.startDate, leave.endDate) : 1;
 
   return (
     <div className="bg-white p-4 rounded-lg shadow-sm border border-slate-200 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 animate-fade-in">
@@ -469,6 +581,9 @@ function LeaveCard({ leave, isAdmin, onUpdateStatus }) {
           <span className="font-bold text-lg text-slate-800">{leave.name}</span>
           <span className={`text-xs px-2 py-0.5 rounded-full ${typeStyle}`}>
             {leave.type}
+          </span>
+          <span className="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full font-medium">
+            共 {days} 天
           </span>
         </div>
         <div className="text-sm text-slate-500 flex items-center gap-2 mb-2">
