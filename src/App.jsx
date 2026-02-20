@@ -160,7 +160,7 @@ export default function App() {
           <div className="flex justify-between items-center h-16">
             <div className="flex items-center gap-2 font-bold text-xl text-indigo-600">
               <Calendar className="w-6 h-6" />
-              <span>離澳日期申請 <span className="text-xs bg-indigo-100 text-indigo-600 px-2 py-0.5 rounded-full font-normal align-middle ml-1">Cloud</span></span>
+              <span>同工離澳日期申請 <span className="text-xs bg-indigo-100 text-indigo-600 px-2 py-0.5 rounded-full font-normal align-middle ml-1">Cloud</span></span>
             </div>
             <div className="flex space-x-1 sm:space-x-4">
               <NavButton active={view === 'apply'} onClick={() => setView('apply')} icon={<PlusCircle size={18} />} label="同工申請離澳" />
