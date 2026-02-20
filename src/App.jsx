@@ -252,10 +252,13 @@ function ApplyForm({ onSubmit }) {
 
   return (
     <div className="max-w-lg mx-auto bg-white p-6 rounded-xl shadow-sm border border-slate-200 animate-fade-in">
-      <h2 className="text-2xl font-bold mb-6 flex items-center gap-2">
+      <h2 className="text-2xl font-bold mb-2 flex items-center gap-2">
         <FileText className="text-indigo-500" />
         填寫申請表
       </h2>
+      <p className="text-xs text-slate-500 mb-6 leading-relaxed">
+        * 此申請表旨為記錄同工離澳的日子，以便協調教會的人手安排，該申請將由同工所屬事工負責人進行審批。
+      </p>
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
           <label className="block text-sm font-medium text-slate-700 mb-1">同工姓名</label>
