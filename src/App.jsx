@@ -527,6 +527,7 @@ function AdminDashboard({ leaves, onUpdateStatus, onDeleteLeave, onResetStatus }
 
 function CalendarView({ leaves }) {
   const [currentDate, setCurrentDate] = useState(new Date());
+  const [selectedLeave, setSelectedLeave] = useState(null);
 
   // 取得當月天數
   const getDaysInMonth = (date) => {
@@ -578,7 +579,8 @@ function CalendarView({ leaves }) {
             {daysLeaves.map(leave => (
               <div 
                 key={leave.id} 
-                className={`text-xs px-1.5 py-0.5 rounded truncate shadow-sm border-l-2
+                onClick={() => setSelectedLeave(leave)}
+                className={`cursor-pointer text-xs px-1.5 py-0.5 rounded truncate shadow-sm border-l-2
                   ${leave.type === '生病' ? 'bg-red-50 border-red-400 text-red-700' : 
                     leave.type === '私人' ? 'bg-green-50 border-green-400 text-green-700' :
                     leave.type === '事工' ? 'bg-blue-50 border-blue-400 text-blue-700' :
@@ -596,7 +598,7 @@ function CalendarView({ leaves }) {
   };
 
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden animate-fade-in">
+    <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden animate-fade-in relative">
       <div className="flex justify-between items-center p-4 bg-slate-50 border-b border-slate-200">
         <button onClick={() => changeMonth(-1)} className="p-2 hover:bg-white rounded-full transition-colors border border-transparent hover:border-slate-300">
           <ChevronLeft size={20} />
@@ -619,6 +621,43 @@ function CalendarView({ leaves }) {
         <div className="flex items-center gap-1"><div className="w-3 h-3 bg-blue-100 border-l-2 border-blue-400"></div> 事工</div>
         <div className="flex items-center gap-1"><div className="w-3 h-3 bg-green-100 border-l-2 border-green-400"></div> 私人</div>
       </div>
+
+      {/* 申請詳情彈出視窗 (Modal) */}
+      {selectedLeave && (
+        <div className="fixed inset-0 bg-slate-900/40 flex items-center justify-center z-50 p-4 animate-fade-in" onClick={() => setSelectedLeave(null)}>
+          <div className="bg-white rounded-xl p-6 max-w-sm w-full shadow-xl" onClick={e => e.stopPropagation()}>
+            <div className="flex justify-between items-start mb-4">
+              <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                <FileText className="text-indigo-500 w-5 h-5" />
+                申請詳情
+              </h3>
+              <button onClick={() => setSelectedLeave(null)} className="text-slate-400 hover:text-slate-600 transition-colors">
+                <XCircle size={24} />
+              </button>
+            </div>
+            <div className="space-y-3 text-sm text-slate-600">
+              <p><span className="font-medium text-slate-500">同工姓名：</span><span className="font-bold text-slate-800">{selectedLeave.name}</span></p>
+              <p><span className="font-medium text-slate-500">申請類別：</span>
+                <span className={`inline-block px-2 py-0.5 rounded-full text-xs ml-1 ${LEAVE_TYPES.find(t => t.label === selectedLeave.type)?.color || 'bg-gray-100'}`}>
+                  {selectedLeave.type}
+                </span>
+              </p>
+              <p><span className="font-medium text-slate-500">日期區間：</span>{selectedLeave.startDate} ~ {selectedLeave.endDate}</p>
+              <div className="pt-2">
+                <span className="font-medium text-slate-500 block mb-1">申請原因 / 備註：</span>
+                <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 text-slate-700 whitespace-pre-wrap">
+                  {selectedLeave.reason || '無填寫'}
+                </div>
+              </div>
+            </div>
+            <div className="mt-6">
+              <button onClick={() => setSelectedLeave(null)} className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-2.5 rounded-lg transition-colors shadow-sm">
+                關閉
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
