@@ -481,7 +481,7 @@ function AdminDashboard({ leaves, onUpdateStatus, onDeleteLeave, onResetStatus }
           <div className="flex justify-between items-end mb-4">
             <h2 className="text-xl font-bold text-slate-700 flex items-center gap-2">
               <BarChart2 className="w-5 h-5 text-indigo-500" />
-              同工請假匯總 (已批准)
+              同工申請離澳匯總 (已批准)
             </h2>
             <button 
               onClick={exportToCSV}
