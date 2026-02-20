@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { Calendar, CheckCircle, XCircle, Clock, FileText, ChevronLeft, ChevronRight, PlusCircle, LayoutDashboard, Cloud, Download, BarChart2 } from 'lucide-react';
+import { Calendar, CheckCircle, XCircle, Clock, FileText, ChevronLeft, ChevronRight, PlusCircle, LayoutDashboard, Cloud, Download, BarChart2, Trash2, RotateCcw } from 'lucide-react';
 
 // Firebase SDK Imports
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
-import { getFirestore, collection, addDoc, updateDoc, doc, onSnapshot } from 'firebase/firestore';
+import { getFirestore, collection, addDoc, updateDoc, doc, onSnapshot, deleteDoc } from 'firebase/firestore';
 
 // --- Firebase 設定 (已填入您的真實金鑰) ---
 const firebaseConfig = {
@@ -124,6 +124,34 @@ export default function App() {
     }
   };
 
+  // 刪除假單
+  const handleDeleteLeave = async (id) => {
+    if (!user) return;
+    if (!window.confirm("確定要刪除這筆紀錄嗎？此操作無法復原。")) return;
+    try {
+      const leaveRef = doc(db, 'artifacts', appId, 'public', 'data', 'leaves', id);
+      await deleteDoc(leaveRef);
+      showNotification("已成功刪除紀錄");
+    } catch (error) {
+      console.error("Error deleting document: ", error);
+      showNotification("刪除失敗");
+    }
+  };
+
+  // 重置假單狀態 (退回待審批)
+  const handleResetStatus = async (id) => {
+    if (!user) return;
+    if (!window.confirm("確定要取消此假單的審批結果，並退回「待審批」狀態嗎？")) return;
+    try {
+      const leaveRef = doc(db, 'artifacts', appId, 'public', 'data', 'leaves', id);
+      await updateDoc(leaveRef, { status: 'Pending' });
+      showNotification("已退回待審批");
+    } catch (error) {
+      console.error("Error resetting document: ", error);
+      showNotification("撤銷失敗");
+    }
+  };
+
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800 font-sans">
       {/* 導航欄 */}
@@ -163,7 +191,12 @@ export default function App() {
             )}
 
             {view === 'admin' && (
-              <AdminDashboard leaves={leaves} onUpdateStatus={handleUpdateStatus} />
+              <AdminDashboard 
+                leaves={leaves} 
+                onUpdateStatus={handleUpdateStatus} 
+                onDeleteLeave={handleDeleteLeave}
+                onResetStatus={handleResetStatus}
+              />
             )}
 
             {view === 'calendar' && (
@@ -301,7 +334,7 @@ function ApplyForm({ onSubmit }) {
   );
 }
 
-function AdminDashboard({ leaves, onUpdateStatus }) {
+function AdminDashboard({ leaves, onUpdateStatus, onDeleteLeave, onResetStatus }) {
   const pendingLeaves = leaves.filter(l => l.status === 'Pending');
   const historyLeaves = leaves.filter(l => l.status !== 'Pending');
 
@@ -379,7 +412,13 @@ function AdminDashboard({ leaves, onUpdateStatus }) {
         ) : (
           <div className="grid gap-4">
             {pendingLeaves.map(leave => (
-              <LeaveCard key={leave.id} leave={leave} isAdmin={true} onUpdateStatus={onUpdateStatus} calculateDays={calculateDays} />
+              <LeaveCard 
+                key={leave.id} 
+                leave={leave} 
+                isAdmin={true} 
+                onUpdateStatus={onUpdateStatus} 
+                calculateDays={calculateDays} 
+              />
             ))}
           </div>
         )}
@@ -396,25 +435,42 @@ function AdminDashboard({ leaves, onUpdateStatus }) {
           <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
             <div className="max-h-[400px] overflow-y-auto">
               <table className="w-full text-left text-sm">
-                <thead className="bg-slate-50 border-b border-slate-200 sticky top-0">
+                <thead className="bg-slate-50 border-b border-slate-200 sticky top-0 z-10">
                   <tr>
                     <th className="p-3 font-semibold text-slate-600">員工</th>
                     <th className="p-3 font-semibold text-slate-600">日期</th>
                     <th className="p-3 font-semibold text-slate-600">狀態</th>
+                    <th className="p-3 font-semibold text-slate-600 text-center">操作</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {historyLeaves.map(leave => (
-                    <tr key={leave.id} className="hover:bg-slate-50">
+                    <tr key={leave.id} className="hover:bg-slate-50 group">
                       <td className="p-3 font-medium">{leave.name}</td>
                       <td className="p-3 text-slate-500 text-xs">{leave.startDate}</td>
                       <td className="p-3">
                         <StatusBadge status={leave.status} />
                       </td>
+                      <td className="p-3 flex justify-center gap-2 opacity-100 sm:opacity-50 sm:group-hover:opacity-100 transition-opacity">
+                        <button 
+                          onClick={() => onResetStatus(leave.id)} 
+                          className="text-slate-400 hover:text-blue-600 transition-colors p-1"
+                          title="撤銷並退回待審批"
+                        >
+                          <RotateCcw size={16} />
+                        </button>
+                        <button 
+                          onClick={() => onDeleteLeave(leave.id)} 
+                          className="text-slate-400 hover:text-red-600 transition-colors p-1"
+                          title="永久刪除紀錄"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </td>
                     </tr>
                   ))}
                   {historyLeaves.length === 0 && (
-                     <tr><td colSpan="3" className="p-4 text-center text-slate-400">尚無記錄</td></tr>
+                     <tr><td colSpan="4" className="p-4 text-center text-slate-400">尚無記錄</td></tr>
                   )}
                 </tbody>
               </table>
