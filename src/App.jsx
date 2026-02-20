@@ -1,0 +1,512 @@
+import React, { useState, useEffect } from 'react';
+import { Calendar, CheckCircle, XCircle, Clock, FileText, ChevronLeft, ChevronRight, PlusCircle, LayoutDashboard, Cloud } from 'lucide-react';
+
+// Firebase SDK Imports
+import { initializeApp } from 'firebase/app';
+import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
+import { getFirestore, collection, addDoc, updateDoc, doc, onSnapshot } from 'firebase/firestore';
+
+// --- Firebase 設定 (已填入您的真實金鑰) ---
+const firebaseConfig = {
+  apiKey: "AIzaSyC3O_sjvTSbxKJE3b5cSBW74wCvFFlHk5I",
+  authDomain: "crumacau-leave-system.firebaseapp.com",
+  projectId: "crumacau-leave-system",
+  storageBucket: "crumacau-leave-system.firebasestorage.app",
+  messagingSenderId: "508647002195",
+  appId: "1:508647002195:web:988c23b584b781e7e8f6a6"
+};
+
+// 初始化 Firebase
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+const appId = 'company-leave-system'; 
+
+const LEAVE_TYPES = [
+  { id: 'work', label: '事工', color: 'bg-blue-100 text-blue-800' },
+  { id: 'personal', label: '私人', color: 'bg-green-100 text-green-800' },
+  { id: 'sick', label: '生病', color: 'bg-red-100 text-red-800' },
+  { id: 'other', label: '其他', color: 'bg-gray-100 text-gray-800' },
+];
+
+export default function App() {
+  const [view, setView] = useState('apply'); // apply, admin, calendar
+  const [leaves, setLeaves] = useState([]);
+  const [notification, setNotification] = useState(null);
+  const [user, setUser] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  // 1. 初始化並登入
+  useEffect(() => {
+    if (!auth) return;
+
+    // 嘗試匿名登入
+    signInAnonymously(auth).catch((error) => {
+      console.error("登入失敗:", error);
+      showNotification("登入失敗，請確認 Firebase Authentication 已啟用「匿名登入」");
+      setLoading(false);
+    });
+    
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
+      if (!currentUser) setLoading(false);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  // 2. 監聽數據 (即時同步)
+  useEffect(() => {
+    if (!user || !db) return;
+
+    const leavesCollection = collection(db, 'artifacts', appId, 'public', 'data', 'leaves');
+    
+    const unsubscribe = onSnapshot(leavesCollection, (snapshot) => {
+      const leavesData = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      
+      // 按照開始日期倒序排列
+      leavesData.sort((a, b) => new Date(b.startDate) - new Date(a.startDate));
+      
+      setLeaves(leavesData);
+      setLoading(false);
+    }, (error) => {
+      console.error("Data fetch error:", error);
+      if (user) showNotification("讀取資料失敗，請檢查網路");
+      setLoading(false);
+    });
+
+    return () => unsubscribe();
+  }, [user]);
+
+  // 顯示通知
+  const showNotification = (message) => {
+    setNotification(message);
+    setTimeout(() => setNotification(null), 3000);
+  };
+
+  // 提交請假申請
+  const handleSubmitLeave = async (formData) => {
+    if (!user) {
+      showNotification("尚未連線到資料庫");
+      return;
+    }
+    try {
+      const newLeave = {
+        ...formData,
+        status: 'Pending',
+        createdAt: Date.now(),
+        userId: user.uid
+      };
+      
+      // 寫入 Firestore
+      await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'leaves'), newLeave);
+      
+      showNotification("申請已成功提交到雲端！");
+      setView('calendar'); 
+    } catch (error) {
+      console.error("Error adding document: ", error);
+      showNotification("提交失敗：" + error.message);
+    }
+  };
+
+  // 更新審批狀態
+  const handleUpdateStatus = async (id, status) => {
+    if (!user) return;
+    try {
+      const leaveRef = doc(db, 'artifacts', appId, 'public', 'data', 'leaves', id);
+      await updateDoc(leaveRef, { status: status });
+      showNotification(`已更新狀態為：${status === 'Approved' ? '批准' : '拒絕'}`);
+    } catch (error) {
+      console.error("Error updating document: ", error);
+      showNotification("更新失敗");
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-slate-50 text-slate-800 font-sans">
+      {/* 導航欄 */}
+      <nav className="bg-white shadow-sm border-b border-slate-200 sticky top-0 z-10">
+        <div className="max-w-4xl mx-auto px-4">
+          <div className="flex justify-between items-center h-16">
+            <div className="flex items-center gap-2 font-bold text-xl text-indigo-600">
+              <Calendar className="w-6 h-6" />
+              <span>請假管理系統 <span className="text-xs bg-indigo-100 text-indigo-600 px-2 py-0.5 rounded-full font-normal align-middle ml-1">Cloud</span></span>
+            </div>
+            <div className="flex space-x-1 sm:space-x-4">
+              <NavButton active={view === 'apply'} onClick={() => setView('apply')} icon={<PlusCircle size={18} />} label="申請請假" />
+              <NavButton active={view === 'admin'} onClick={() => setView('admin')} icon={<CheckCircle size={18} />} label="主管審批" count={leaves.filter(l => l.status === 'Pending').length} />
+              <NavButton active={view === 'calendar'} onClick={() => setView('calendar')} icon={<LayoutDashboard size={18} />} label="團隊月曆" />
+            </div>
+          </div>
+        </div>
+      </nav>
+
+      {/* 主要內容區 */}
+      <main className="max-w-4xl mx-auto p-4 md:p-6">
+        {notification && (
+          <div className="fixed top-20 right-4 bg-slate-800 text-white px-4 py-2 rounded shadow-lg animate-fade-in-down z-50">
+            {notification}
+          </div>
+        )}
+
+        {loading ? (
+          <div className="flex flex-col justify-center items-center h-64 text-slate-400 gap-4">
+            <Cloud className="w-12 h-12 animate-bounce text-indigo-200" />
+            <p>正在連線到雲端資料庫...</p>
+          </div>
+        ) : (
+          <>
+            {view === 'apply' && (
+              <ApplyForm onSubmit={handleSubmitLeave} />
+            )}
+
+            {view === 'admin' && (
+              <AdminDashboard leaves={leaves} onUpdateStatus={handleUpdateStatus} />
+            )}
+
+            {view === 'calendar' && (
+              <CalendarView leaves={leaves} />
+            )}
+          </>
+        )}
+      </main>
+    </div>
+  );
+}
+
+// --- 子組件 ---
+
+function NavButton({ active, onClick, icon, label, count }) {
+  return (
+    <button
+      onClick={onClick}
+      className={`flex items-center gap-2 px-3 py-2 rounded-md transition-colors text-sm font-medium
+        ${active ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-100'}
+      `}
+    >
+      {icon}
+      <span className="hidden sm:inline">{label}</span>
+      {count > 0 && (
+        <span className="bg-red-500 text-white text-xs px-1.5 py-0.5 rounded-full">{count}</span>
+      )}
+    </button>
+  );
+}
+
+function ApplyForm({ onSubmit }) {
+  const [formData, setFormData] = useState({
+    name: '',
+    startDate: '',
+    endDate: '',
+    type: '事工',
+    reason: ''
+  });
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    if (!formData.name || !formData.startDate || !formData.endDate) return;
+    onSubmit(formData);
+    setFormData({ name: '', startDate: '', endDate: '', type: '事工', reason: '' });
+  };
+
+  return (
+    <div className="max-w-lg mx-auto bg-white p-6 rounded-xl shadow-sm border border-slate-200 animate-fade-in">
+      <h2 className="text-2xl font-bold mb-6 flex items-center gap-2">
+        <FileText className="text-indigo-500" />
+        填寫請假單
+      </h2>
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <div>
+          <label className="block text-sm font-medium text-slate-700 mb-1">員工姓名</label>
+          <input
+            type="text"
+            required
+            className="w-full p-2 border border-slate-300 rounded focus:ring-2 focus:ring-indigo-500 outline-none"
+            placeholder="請輸入姓名"
+            value={formData.name}
+            onChange={e => setFormData({...formData, name: e.target.value})}
+          />
+        </div>
+
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">開始日期</label>
+            <input
+              type="date"
+              required
+              className="w-full p-2 border border-slate-300 rounded focus:ring-2 focus:ring-indigo-500 outline-none"
+              value={formData.startDate}
+              onChange={e => setFormData({...formData, startDate: e.target.value})}
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">結束日期</label>
+            <input
+              type="date"
+              required
+              className="w-full p-2 border border-slate-300 rounded focus:ring-2 focus:ring-indigo-500 outline-none"
+              value={formData.endDate}
+              onChange={e => setFormData({...formData, endDate: e.target.value})}
+            />
+          </div>
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-slate-700 mb-1">請假類別</label>
+          <div className="grid grid-cols-2 gap-2">
+            {LEAVE_TYPES.map(type => (
+              <label key={type.id} className={`
+                cursor-pointer border rounded p-2 text-center text-sm font-medium transition-all
+                ${formData.type === type.label 
+                  ? 'border-indigo-500 bg-indigo-50 text-indigo-700 ring-1 ring-indigo-500' 
+                  : 'border-slate-200 hover:border-slate-300'}
+              `}>
+                <input 
+                  type="radio" 
+                  name="type" 
+                  value={type.label} 
+                  className="hidden" 
+                  onChange={e => setFormData({...formData, type: e.target.value})}
+                />
+                {type.label}
+              </label>
+            ))}
+          </div>
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-slate-700 mb-1">請假原因 / 備註</label>
+          <textarea
+            className="w-full p-2 border border-slate-300 rounded focus:ring-2 focus:ring-indigo-500 outline-none h-24"
+            placeholder="請簡述原因..."
+            value={formData.reason}
+            onChange={e => setFormData({...formData, reason: e.target.value})}
+          ></textarea>
+        </div>
+
+        <button type="submit" className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-lg transition-colors shadow-sm">
+          提交申請
+        </button>
+      </form>
+    </div>
+  );
+}
+
+function AdminDashboard({ leaves, onUpdateStatus }) {
+  const pendingLeaves = leaves.filter(l => l.status === 'Pending');
+  const historyLeaves = leaves.filter(l => l.status !== 'Pending');
+
+  return (
+    <div className="space-y-8 animate-fade-in">
+      {/* 待審批區塊 */}
+      <section>
+        <h2 className="text-xl font-bold mb-4 flex items-center gap-2 text-amber-600">
+          <Clock className="w-5 h-5" />
+          待審批申請 ({pendingLeaves.length})
+        </h2>
+        
+        {pendingLeaves.length === 0 ? (
+          <div className="bg-white p-8 rounded-xl border border-dashed border-slate-300 text-center text-slate-500">
+            目前沒有待審批的申請
+          </div>
+        ) : (
+          <div className="grid gap-4">
+            {pendingLeaves.map(leave => (
+              <LeaveCard key={leave.id} leave={leave} isAdmin={true} onUpdateStatus={onUpdateStatus} />
+            ))}
+          </div>
+        )}
+      </section>
+
+      {/* 歷史記錄 */}
+      <section>
+        <h2 className="text-xl font-bold mb-4 text-slate-700">最近審批記錄</h2>
+        <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+          <table className="w-full text-left text-sm">
+            <thead className="bg-slate-50 border-b border-slate-200">
+              <tr>
+                <th className="p-3 font-semibold text-slate-600">員工</th>
+                <th className="p-3 font-semibold text-slate-600">日期</th>
+                <th className="p-3 font-semibold text-slate-600">類別</th>
+                <th className="p-3 font-semibold text-slate-600">狀態</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {historyLeaves.map(leave => (
+                <tr key={leave.id}>
+                  <td className="p-3">{leave.name}</td>
+                  <td className="p-3 text-slate-500">{leave.startDate}</td>
+                  <td className="p-3">
+                    <span className={`px-2 py-0.5 rounded text-xs ${LEAVE_TYPES.find(t => t.label === leave.type)?.color || 'bg-gray-100'}`}>
+                      {leave.type}
+                    </span>
+                  </td>
+                  <td className="p-3">
+                    <StatusBadge status={leave.status} />
+                  </td>
+                </tr>
+              ))}
+              {historyLeaves.length === 0 && (
+                 <tr><td colSpan="4" className="p-4 text-center text-slate-400">尚無記錄</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function CalendarView({ leaves }) {
+  const [currentDate, setCurrentDate] = useState(new Date());
+
+  // 取得當月天數
+  const getDaysInMonth = (date) => {
+    const year = date.getFullYear();
+    const month = date.getMonth();
+    return new Date(year, month + 1, 0).getDate();
+  };
+
+  // 取得當月第一天是星期幾
+  const getFirstDayOfMonth = (date) => {
+    const year = date.getFullYear();
+    const month = date.getMonth();
+    return new Date(year, month, 1).getDay();
+  };
+
+  const changeMonth = (offset) => {
+    const newDate = new Date(currentDate.getFullYear(), currentDate.getMonth() + offset, 1);
+    setCurrentDate(newDate);
+  };
+
+  const daysInMonth = getDaysInMonth(currentDate);
+  const firstDay = getFirstDayOfMonth(currentDate);
+  const monthName = currentDate.toLocaleString('default', { month: 'long', year: 'numeric' });
+
+  // 產生月曆格子
+  const renderCalendarDays = () => {
+    const days = [];
+    const emptyDays = Array(firstDay).fill(null);
+    const dateDays = Array.from({ length: daysInMonth }, (_, i) => i + 1);
+    
+    const allCells = [...emptyDays, ...dateDays];
+
+    return allCells.map((day, index) => {
+      if (!day) return <div key={`empty-${index}`} className="bg-slate-50 border border-slate-100 min-h-[80px]"></div>;
+
+      const dateStr = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+      
+      // 篩選當天的請假 (只顯示已批准)
+      const daysLeaves = leaves.filter(l => {
+        return l.status === 'Approved' && dateStr >= l.startDate && dateStr <= l.endDate;
+      });
+
+      return (
+        <div key={day} className="border border-slate-200 bg-white min-h-[100px] p-1 relative group hover:bg-slate-50 transition-colors">
+          <span className={`text-sm font-semibold p-1 block ${new Date().toISOString().split('T')[0] === dateStr ? 'text-indigo-600' : 'text-slate-700'}`}>
+            {day}
+          </span>
+          <div className="space-y-1 mt-1">
+            {daysLeaves.map(leave => (
+              <div 
+                key={leave.id} 
+                className={`text-xs px-1.5 py-0.5 rounded truncate shadow-sm border-l-2
+                  ${leave.type === '生病' ? 'bg-red-50 border-red-400 text-red-700' : 
+                    leave.type === '私人' ? 'bg-green-50 border-green-400 text-green-700' :
+                    leave.type === '事工' ? 'bg-blue-50 border-blue-400 text-blue-700' :
+                    'bg-gray-50 border-gray-400 text-gray-700'}
+                `}
+                title={`${leave.name}: ${leave.reason}`}
+              >
+                {leave.name} ({leave.type})
+              </div>
+            ))}
+          </div>
+        </div>
+      );
+    });
+  };
+
+  return (
+    <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden animate-fade-in">
+      <div className="flex justify-between items-center p-4 bg-slate-50 border-b border-slate-200">
+        <button onClick={() => changeMonth(-1)} className="p-2 hover:bg-white rounded-full transition-colors border border-transparent hover:border-slate-300">
+          <ChevronLeft size={20} />
+        </button>
+        <h2 className="text-lg font-bold text-slate-800">{monthName}</h2>
+        <button onClick={() => changeMonth(1)} className="p-2 hover:bg-white rounded-full transition-colors border border-transparent hover:border-slate-300">
+          <ChevronRight size={20} />
+        </button>
+      </div>
+      
+      <div className="grid grid-cols-7 text-center bg-slate-100 text-slate-500 text-xs py-2 font-medium border-b border-slate-200">
+        <div>日</div><div>一</div><div>二</div><div>三</div><div>四</div><div>五</div><div>六</div>
+      </div>
+      
+      <div className="grid grid-cols-7 auto-rows-fr">
+        {renderCalendarDays()}
+      </div>
+      
+      <div className="p-4 bg-slate-50 text-xs text-slate-500 flex gap-4 border-t border-slate-200">
+        <div className="flex items-center gap-1"><div className="w-3 h-3 bg-blue-100 border-l-2 border-blue-400"></div> 事工</div>
+        <div className="flex items-center gap-1"><div className="w-3 h-3 bg-green-100 border-l-2 border-green-400"></div> 私人</div>
+        <div className="flex items-center gap-1"><div className="w-3 h-3 bg-red-100 border-l-2 border-red-400"></div> 生病</div>
+      </div>
+    </div>
+  );
+}
+
+// 通用組件：請假卡片
+function LeaveCard({ leave, isAdmin, onUpdateStatus }) {
+  const typeStyle = LEAVE_TYPES.find(t => t.label === leave.type)?.color;
+
+  return (
+    <div className="bg-white p-4 rounded-lg shadow-sm border border-slate-200 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 animate-fade-in">
+      <div className="flex-1">
+        <div className="flex items-center gap-2 mb-1">
+          <span className="font-bold text-lg text-slate-800">{leave.name}</span>
+          <span className={`text-xs px-2 py-0.5 rounded-full ${typeStyle}`}>
+            {leave.type}
+          </span>
+        </div>
+        <div className="text-sm text-slate-500 flex items-center gap-2 mb-2">
+          <Clock size={14} />
+          {leave.startDate} ~ {leave.endDate}
+        </div>
+        <div className="text-sm text-slate-700 bg-slate-50 p-2 rounded">
+          <span className="font-medium text-slate-500 text-xs block mb-1">原因：</span>
+          {leave.reason}
+        </div>
+      </div>
+
+      {isAdmin && leave.status === 'Pending' && (
+        <div className="flex gap-2 w-full sm:w-auto">
+          <button 
+            onClick={() => onUpdateStatus(leave.id, 'Rejected')}
+            className="flex-1 sm:flex-none flex items-center justify-center gap-1 px-4 py-2 border border-red-200 text-red-600 rounded-md hover:bg-red-50 transition-colors text-sm font-medium"
+          >
+            <XCircle size={16} /> 拒絕
+          </button>
+          <button 
+            onClick={() => onUpdateStatus(leave.id, 'Approved')}
+            className="flex-1 sm:flex-none flex items-center justify-center gap-1 px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors shadow-sm text-sm font-medium"
+          >
+            <CheckCircle size={16} /> 批准
+          </button>
+        </div>
+      )}
+      
+      {!isAdmin && (
+         <StatusBadge status={leave.status} />
+      )}
+    </div>
+  );
+}
+
+function StatusBadge({ status }) {
+  if (status === 'Approved') return <span className="text-xs font-bold text-green-600 bg-green-50 px-2 py-1 rounded border border-green-200">已批准</span>;
+  if (status === 'Rejected') return <span className="text-xs font-bold text-red-600 bg-red-50 px-2 py-1 rounded border border-red-200">已拒絕</span>;
+  return <span className="text-xs font-bold text-amber-600 bg-amber-50 px-2 py-1 rounded border border-amber-200">待審批</span>;
+}
