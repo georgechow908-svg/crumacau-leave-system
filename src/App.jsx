@@ -164,7 +164,7 @@ export default function App() {
             </div>
             <div className="flex space-x-1 sm:space-x-4">
               <NavButton active={view === 'apply'} onClick={() => setView('apply')} icon={<PlusCircle size={18} />} label="申請請假" />
-              <NavButton active={view === 'admin'} onClick={() => setView('admin')} icon={<CheckCircle size={18} />} label="主管審批" count={leaves.filter(l => l.status === 'Pending').length} />
+              <NavButton active={view === 'admin'} onClick={() => setView('admin')} icon={<CheckCircle size={18} />} label="事工負責人審批" count={leaves.filter(l => l.status === 'Pending').length} />
               <NavButton active={view === 'calendar'} onClick={() => setView('calendar')} icon={<LayoutDashboard size={18} />} label="團隊月曆" />
             </div>
           </div>
@@ -259,7 +259,7 @@ function ApplyForm({ onSubmit }) {
       </h2>
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
-          <label className="block text-sm font-medium text-slate-700 mb-1">員工姓名</label>
+          <label className="block text-sm font-medium text-slate-700 mb-1">同工姓名</label>
           <input
             type="text"
             required
@@ -372,7 +372,7 @@ function AdminDashboard({ leaves, onUpdateStatus, onDeleteLeave, onResetStatus }
   // 匯出 CSV 功能
   const exportToCSV = () => {
     // CSV 標頭
-    let csvContent = "員工姓名,開始日期,結束日期,請假天數,請假類別,原因,狀態\n";
+    let csvContent = "同工姓名,開始日期,結束日期,請假天數,請假類別,原因,狀態\n";
     
     // CSV 內容
     leaves.forEach(leave => {
@@ -437,7 +437,7 @@ function AdminDashboard({ leaves, onUpdateStatus, onDeleteLeave, onResetStatus }
               <table className="w-full text-left text-sm">
                 <thead className="bg-slate-50 border-b border-slate-200 sticky top-0 z-10">
                   <tr>
-                    <th className="p-3 font-semibold text-slate-600">員工</th>
+                    <th className="p-3 font-semibold text-slate-600">同工</th>
                     <th className="p-3 font-semibold text-slate-600">日期</th>
                     <th className="p-3 font-semibold text-slate-600">狀態</th>
                     <th className="p-3 font-semibold text-slate-600 text-center">操作</th>
@@ -483,7 +483,7 @@ function AdminDashboard({ leaves, onUpdateStatus, onDeleteLeave, onResetStatus }
           <div className="flex justify-between items-end mb-4">
             <h2 className="text-xl font-bold text-slate-700 flex items-center gap-2">
               <BarChart2 className="w-5 h-5 text-indigo-500" />
-              員工請假匯總 (已批准)
+              同工請假匯總 (已批准)
             </h2>
             <button 
               onClick={exportToCSV}
@@ -497,7 +497,7 @@ function AdminDashboard({ leaves, onUpdateStatus, onDeleteLeave, onResetStatus }
              <table className="w-full text-left text-sm">
                 <thead className="bg-slate-50 border-b border-slate-200">
                   <tr>
-                    <th className="p-3 font-semibold text-slate-600">員工</th>
+                    <th className="p-3 font-semibold text-slate-600">同工</th>
                     <th className="p-3 font-semibold text-center text-slate-600">總天數</th>
                     <th className="p-3 font-semibold text-center text-blue-600">事工</th>
                     <th className="p-3 font-semibold text-center text-green-600">私人</th>
