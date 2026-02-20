@@ -25,7 +25,6 @@ const appId = 'company-leave-system';
 const LEAVE_TYPES = [
   { id: 'work', label: '事工', color: 'bg-blue-100 text-blue-800' },
   { id: 'personal', label: '私人', color: 'bg-green-100 text-green-800' },
-  { id: 'sick', label: '生病', color: 'bg-red-100 text-red-800' },
   { id: 'other', label: '其他', color: 'bg-gray-100 text-gray-800' },
 ];
 
@@ -255,7 +254,7 @@ function ApplyForm({ onSubmit }) {
     <div className="max-w-lg mx-auto bg-white p-6 rounded-xl shadow-sm border border-slate-200 animate-fade-in">
       <h2 className="text-2xl font-bold mb-6 flex items-center gap-2">
         <FileText className="text-indigo-500" />
-        填寫請假單
+        填寫申請表
       </h2>
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
@@ -353,12 +352,11 @@ function AdminDashboard({ leaves, onUpdateStatus, onDeleteLeave, onResetStatus }
     leaves.filter(l => l.status === 'Approved').forEach(leave => {
       const days = calculateDays(leave.startDate, leave.endDate);
       if (!summary[leave.name]) {
-        summary[leave.name] = { total: 0, work: 0, personal: 0, sick: 0, other: 0 };
+        summary[leave.name] = { total: 0, work: 0, personal: 0, other: 0 };
       }
       summary[leave.name].total += days;
       if (leave.type === '事工') summary[leave.name].work += days;
       else if (leave.type === '私人') summary[leave.name].personal += days;
-      else if (leave.type === '生病') summary[leave.name].sick += days;
       else summary[leave.name].other += days;
     });
     
@@ -501,7 +499,6 @@ function AdminDashboard({ leaves, onUpdateStatus, onDeleteLeave, onResetStatus }
                     <th className="p-3 font-semibold text-center text-slate-600">總天數</th>
                     <th className="p-3 font-semibold text-center text-blue-600">事工</th>
                     <th className="p-3 font-semibold text-center text-green-600">私人</th>
-                    <th className="p-3 font-semibold text-center text-red-600">生病</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -511,11 +508,10 @@ function AdminDashboard({ leaves, onUpdateStatus, onDeleteLeave, onResetStatus }
                       <td className="p-3 text-center font-bold bg-slate-50">{stat.total}</td>
                       <td className="p-3 text-center text-slate-500">{stat.work || '-'}</td>
                       <td className="p-3 text-center text-slate-500">{stat.personal || '-'}</td>
-                      <td className="p-3 text-center text-slate-500">{stat.sick || '-'}</td>
                     </tr>
                   ))}
                   {summaryData.length === 0 && (
-                     <tr><td colSpan="5" className="p-4 text-center text-slate-400">尚無已批准的紀錄</td></tr>
+                     <tr><td colSpan="4" className="p-4 text-center text-slate-400">尚無已批准的紀錄</td></tr>
                   )}
                 </tbody>
               </table>
@@ -619,7 +615,6 @@ function CalendarView({ leaves }) {
       <div className="p-4 bg-slate-50 text-xs text-slate-500 flex gap-4 border-t border-slate-200">
         <div className="flex items-center gap-1"><div className="w-3 h-3 bg-blue-100 border-l-2 border-blue-400"></div> 事工</div>
         <div className="flex items-center gap-1"><div className="w-3 h-3 bg-green-100 border-l-2 border-green-400"></div> 私人</div>
-        <div className="flex items-center gap-1"><div className="w-3 h-3 bg-red-100 border-l-2 border-red-400"></div> 生病</div>
       </div>
     </div>
   );
