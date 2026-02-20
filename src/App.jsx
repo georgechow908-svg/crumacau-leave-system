@@ -256,7 +256,7 @@ function ApplyForm({ onSubmit }) {
         <FileText className="text-indigo-500" />
         填寫申請表
       </h2>
-      <ul className="text-xs text-slate-500 mb-6 leading-relaxed list-disc pl-4 space-y-1">
+      <ul className="text-left text-xs text-slate-500 mb-6 leading-relaxed list-disc ml-5 space-y-1">
         <li>此申請表旨為記錄同工離澳的日子，以便協調教會的人手安排</li>
         <li>事工負責人將依據同工過往因私事申請之日數，以及該申請時段的人力資源而決定是否批准該申請</li>
         <li>該申請將由同工所屬事工負責人進行審批；同工切勿自行審批。</li>
