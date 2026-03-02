@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Calendar, CheckCircle, XCircle, Clock, FileText, ChevronLeft, ChevronRight, PlusCircle, LayoutDashboard, Cloud, Download, BarChart2, Trash2, RotateCcw } from 'lucide-react';
+import { Calendar, CheckCircle, XCircle, Clock, FileText, ChevronLeft, ChevronRight, PlusCircle, LayoutDashboard, Cloud, Download, BarChart2, Trash2, RotateCcw, Lock } from 'lucide-react';
 
 // Firebase SDK Imports
 import { initializeApp } from 'firebase/app';
@@ -268,7 +268,7 @@ function ApplyForm({ onSubmit }) {
             type="text"
             required
             className="w-full p-2 border border-slate-300 rounded focus:ring-2 focus:ring-indigo-500 outline-none"
-            placeholder="請輸入姓名"
+            placeholder="請輸入中文全名"
             value={formData.name}
             onChange={e => setFormData({...formData, name: e.target.value})}
           />
@@ -339,6 +339,10 @@ function ApplyForm({ onSubmit }) {
 }
 
 function AdminDashboard({ leaves, onUpdateStatus, onDeleteLeave, onResetStatus }) {
+  // 權限驗證狀態
+  const [adminInput, setAdminInput] = useState('');
+  const isAdminUser = adminInput.trim() === '12345678910';
+
   const pendingLeaves = leaves.filter(l => l.status === 'Pending');
   const historyLeaves = leaves.filter(l => l.status !== 'Pending');
 
@@ -375,7 +379,7 @@ function AdminDashboard({ leaves, onUpdateStatus, onDeleteLeave, onResetStatus }
   // 匯出 CSV 功能
   const exportToCSV = () => {
     // CSV 標頭
-    let csvContent = "同工姓名,開始日期,結束日期,請假天數,申請類別,原因,狀態\n";
+    let csvContent = "同工姓名,開始日期,結束日期,申請天數,申請類別,原因,狀態\n";
     
     // CSV 內容
     leaves.forEach(leave => {
@@ -392,7 +396,7 @@ function AdminDashboard({ leaves, onUpdateStatus, onDeleteLeave, onResetStatus }
     const link = document.createElement("a");
     const url = URL.createObjectURL(blob);
     link.setAttribute("href", url);
-    link.setAttribute("download", `請假紀錄匯出_${new Date().toISOString().split('T')[0]}.csv`);
+    link.setAttribute("download", `申請紀錄匯出_${new Date().toISOString().split('T')[0]}.csv`);
     link.style.visibility = 'hidden';
     document.body.appendChild(link);
     link.click();
@@ -401,6 +405,29 @@ function AdminDashboard({ leaves, onUpdateStatus, onDeleteLeave, onResetStatus }
 
   return (
     <div className="space-y-8 animate-fade-in">
+      
+      {/* 權限驗證區塊 */}
+      <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <div className="flex items-center gap-3 w-full sm:w-auto">
+          <div className={`p-2 rounded-full ${isAdminUser ? 'bg-green-100 text-green-600' : 'bg-slate-100 text-slate-500'}`}>
+            {isAdminUser ? <CheckCircle size={20} /> : <Lock size={20} />}
+          </div>
+          <div className="flex-1">
+            <label className="text-sm font-bold text-slate-700 block mb-1">事工負責人權限驗證</label>
+            <input
+              type="password"
+              className="w-full sm:w-64 px-3 py-1.5 border border-slate-300 rounded-md text-sm outline-none focus:ring-2 focus:ring-indigo-500 transition-shadow"
+              placeholder="請輸入權限密碼"
+              value={adminInput}
+              onChange={e => setAdminInput(e.target.value)}
+            />
+          </div>
+        </div>
+        <div className="text-sm text-slate-500 bg-slate-50 px-3 py-2 rounded-lg border border-slate-100 w-full sm:w-auto text-center sm:text-left">
+          狀態：{isAdminUser ? <span className="text-green-600 font-bold">已解鎖 (具備審批與匯出權限)</span> : <span>唯讀模式</span>}
+        </div>
+      </div>
+
       {/* 待審批區塊 */}
       <section>
         <h2 className="text-xl font-bold mb-4 flex items-center gap-2 text-amber-600">
@@ -418,7 +445,7 @@ function AdminDashboard({ leaves, onUpdateStatus, onDeleteLeave, onResetStatus }
               <LeaveCard 
                 key={leave.id} 
                 leave={leave} 
-                isAdmin={true} 
+                isAdmin={isAdminUser} 
                 onUpdateStatus={onUpdateStatus} 
                 calculateDays={calculateDays} 
               />
@@ -454,21 +481,27 @@ function AdminDashboard({ leaves, onUpdateStatus, onDeleteLeave, onResetStatus }
                       <td className="p-3">
                         <StatusBadge status={leave.status} />
                       </td>
-                      <td className="p-3 flex justify-center gap-2 opacity-100 sm:opacity-50 sm:group-hover:opacity-100 transition-opacity">
-                        <button 
-                          onClick={() => onResetStatus(leave.id)} 
-                          className="text-slate-400 hover:text-blue-600 transition-colors p-1"
-                          title="撤銷並退回待審批"
-                        >
-                          <RotateCcw size={16} />
-                        </button>
-                        <button 
-                          onClick={() => onDeleteLeave(leave.id)} 
-                          className="text-slate-400 hover:text-red-600 transition-colors p-1"
-                          title="永久刪除紀錄"
-                        >
-                          <Trash2 size={16} />
-                        </button>
+                      <td className="p-3 flex justify-center gap-2 transition-opacity">
+                        {isAdminUser ? (
+                          <>
+                            <button 
+                              onClick={() => onResetStatus(leave.id)} 
+                              className="text-slate-400 hover:text-blue-600 transition-colors p-1"
+                              title="撤銷並退回待審批"
+                            >
+                              <RotateCcw size={16} />
+                            </button>
+                            <button 
+                              onClick={() => onDeleteLeave(leave.id)} 
+                              className="text-slate-400 hover:text-red-600 transition-colors p-1"
+                              title="永久刪除紀錄"
+                            >
+                              <Trash2 size={16} />
+                            </button>
+                          </>
+                        ) : (
+                          <span className="text-slate-300" title="需要負責人權限"><Lock size={14} /></span>
+                        )}
                       </td>
                     </tr>
                   ))}
@@ -488,12 +521,14 @@ function AdminDashboard({ leaves, onUpdateStatus, onDeleteLeave, onResetStatus }
               <BarChart2 className="w-5 h-5 text-indigo-500" />
               同工申請離澳匯總 (已批准)
             </h2>
-            <button 
-              onClick={exportToCSV}
-              className="flex items-center gap-1 text-sm bg-indigo-50 text-indigo-700 hover:bg-indigo-100 px-3 py-1.5 rounded-md transition-colors font-medium border border-indigo-200"
-            >
-              <Download size={16} /> 匯出 CSV 報表
-            </button>
+            {isAdminUser && (
+              <button 
+                onClick={exportToCSV}
+                className="flex items-center gap-1 text-sm bg-indigo-50 text-indigo-700 hover:bg-indigo-100 px-3 py-1.5 rounded-md transition-colors font-medium border border-indigo-200 animate-fade-in"
+              >
+                <Download size={16} /> 匯出 CSV 報表
+              </button>
+            )}
           </div>
           
           <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
