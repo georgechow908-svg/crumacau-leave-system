@@ -341,10 +341,16 @@ function ApplyForm({ onSubmit }) {
 function AdminDashboard({ leaves, onUpdateStatus, onDeleteLeave, onResetStatus }) {
   // 權限驗證狀態
   const [adminInput, setAdminInput] = useState('');
-  const isAdminUser = adminInput.trim() === '12345678910';
+  const isAdminUser = adminInput.trim() === '12345678910'; // 驗證密碼
 
   const pendingLeaves = leaves.filter(l => l.status === 'Pending');
-  const historyLeaves = leaves.filter(l => l.status !== 'Pending');
+  
+  // 歷史紀錄顯示邏輯：如果沒有解鎖，只顯示「已批准」，隱藏「已拒絕」
+  const historyLeaves = leaves.filter(l => {
+    if (l.status === 'Pending') return false;
+    if (!isAdminUser && l.status === 'Rejected') return false; // 隱藏已拒絕
+    return true;
+  });
 
   // 計算請假天數的輔助函數
   const calculateDays = (start, end) => {
