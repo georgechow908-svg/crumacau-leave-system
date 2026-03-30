@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Calendar, CheckCircle, XCircle, Clock, FileText, ChevronLeft, ChevronRight, PlusCircle, LayoutDashboard, Cloud, Download, BarChart2, Trash2, RotateCcw, Lock } from 'lucide-react';
+import { Calendar, CheckCircle, XCircle, Clock, FileText, ChevronLeft, ChevronRight, PlusCircle, LayoutDashboard, Cloud, Download, BarChart2, Trash2, RotateCcw, Lock, Edit3 } from 'lucide-react';
 
 // Firebase SDK Imports
 import { initializeApp } from 'firebase/app';
@@ -123,6 +123,19 @@ export default function App() {
     }
   };
 
+  // 編輯並更新假單內容 (Super Admin 專用)
+  const handleEditLeave = async (id, updatedData) => {
+    if (!user) return;
+    try {
+      const leaveRef = doc(db, 'artifacts', appId, 'public', 'data', 'leaves', id);
+      await updateDoc(leaveRef, updatedData);
+      showNotification("已成功更新紀錄！");
+    } catch (error) {
+      console.error("Error updating document: ", error);
+      showNotification("更新失敗");
+    }
+  };
+
   // 刪除假單
   const handleDeleteLeave = async (id) => {
     if (!user) return;
@@ -159,11 +172,11 @@ export default function App() {
           <div className="flex justify-between items-center h-16">
             <div className="flex items-center gap-2 font-bold text-xl text-indigo-600">
               <Calendar className="w-6 h-6" />
-              <span>同工離澳日期申請 <span className="text-xs bg-indigo-100 text-indigo-600 px-2 py-0.5 rounded-full font-normal align-middle ml-1">Cloud</span></span>
+              <span className="truncate">同工離澳日期申請 <span className="text-xs bg-indigo-100 text-indigo-600 px-2 py-0.5 rounded-full font-normal align-middle ml-1 hidden sm:inline">Cloud</span></span>
             </div>
             <div className="flex space-x-1 sm:space-x-4">
-              <NavButton active={view === 'apply'} onClick={() => setView('apply')} icon={<PlusCircle size={18} />} label="同工申請離澳" />
-              <NavButton active={view === 'admin'} onClick={() => setView('admin')} icon={<CheckCircle size={18} />} label="事工負責人審批" count={leaves.filter(l => l.status === 'Pending').length} />
+              <NavButton active={view === 'apply'} onClick={() => setView('apply')} icon={<PlusCircle size={18} />} label="同工申請" />
+              <NavButton active={view === 'admin'} onClick={() => setView('admin')} icon={<CheckCircle size={18} />} label="負責人審批" count={leaves.filter(l => l.status === 'Pending').length} />
               <NavButton active={view === 'calendar'} onClick={() => setView('calendar')} icon={<LayoutDashboard size={18} />} label="團隊月曆" />
             </div>
           </div>
@@ -195,6 +208,7 @@ export default function App() {
                 onUpdateStatus={handleUpdateStatus} 
                 onDeleteLeave={handleDeleteLeave}
                 onResetStatus={handleResetStatus}
+                onEditLeave={handleEditLeave}
               />
             )}
 
@@ -214,7 +228,7 @@ function NavButton({ active, onClick, icon, label, count }) {
   return (
     <button
       onClick={onClick}
-      className={`flex items-center gap-2 px-3 py-2 rounded-md transition-colors text-sm font-medium
+      className={`flex items-center gap-2 px-2 sm:px-3 py-2 rounded-md transition-colors text-sm font-medium
         ${active ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-100'}
       `}
     >
@@ -274,7 +288,7 @@ function ApplyForm({ onSubmit }) {
           />
         </div>
 
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">開始日期</label>
             <input
@@ -338,10 +352,16 @@ function ApplyForm({ onSubmit }) {
   );
 }
 
-function AdminDashboard({ leaves, onUpdateStatus, onDeleteLeave, onResetStatus }) {
+function AdminDashboard({ leaves, onUpdateStatus, onDeleteLeave, onResetStatus, onEditLeave }) {
   // 權限驗證狀態
   const [adminInput, setAdminInput] = useState('');
-  const isAdminUser = adminInput.trim() === '12345678910'; // 驗證密碼
+  
+  // 判斷權限層級
+  const isSuperAdmin = adminInput.trim() === 'superadmin';
+  const isAdminUser = adminInput.trim() === '12345678910' || isSuperAdmin; 
+
+  // 編輯模式狀態
+  const [editingLeave, setEditingLeave] = useState(null);
 
   const pendingLeaves = leaves.filter(l => l.status === 'Pending');
   
@@ -384,20 +404,13 @@ function AdminDashboard({ leaves, onUpdateStatus, onDeleteLeave, onResetStatus }
 
   // 匯出 CSV 功能
   const exportToCSV = () => {
-    // CSV 標頭
     let csvContent = "同工姓名,開始日期,結束日期,申請天數,申請類別,原因,狀態\n";
-    
-    // CSV 內容
     leaves.forEach(leave => {
       const days = calculateDays(leave.startDate, leave.endDate);
-      // 處理原因中的換行或逗號，避免破壞 CSV 格式
       const safeReason = `"${(leave.reason || '').replace(/"/g, '""')}"`;
       let statusText = leave.status === 'Approved' ? '已批准' : leave.status === 'Rejected' ? '已拒絕' : '待審批';
-      
       csvContent += `${leave.name},${leave.startDate},${leave.endDate},${days},${leave.type},${safeReason},${statusText}\n`;
     });
-
-    // 加上 BOM 讓 Excel 能正確辨識中文 (UTF-8)
     const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement("a");
     const url = URL.createObjectURL(blob);
@@ -409,16 +422,37 @@ function AdminDashboard({ leaves, onUpdateStatus, onDeleteLeave, onResetStatus }
     document.body.removeChild(link);
   };
 
+  // 儲存編輯內容
+  const handleSaveEdit = (e) => {
+    e.preventDefault();
+    if (!editingLeave) return;
+    
+    // 驗證日期
+    if (new Date(editingLeave.endDate) < new Date(editingLeave.startDate)) {
+      alert("結束日期不能早於開始日期！");
+      return;
+    }
+
+    onEditLeave(editingLeave.id, {
+      name: editingLeave.name,
+      startDate: editingLeave.startDate,
+      endDate: editingLeave.endDate,
+      type: editingLeave.type,
+      reason: editingLeave.reason
+    });
+    setEditingLeave(null); // 關閉視窗
+  };
+
   return (
     <div className="space-y-8 animate-fade-in">
       
       {/* 權限驗證區塊 */}
       <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div className="flex items-center gap-3 w-full sm:w-auto">
-          <div className={`p-2 rounded-full ${isAdminUser ? 'bg-green-100 text-green-600' : 'bg-slate-100 text-slate-500'}`}>
-            {isAdminUser ? <CheckCircle size={20} /> : <Lock size={20} />}
+          <div className={`p-2 rounded-full ${isSuperAdmin ? 'bg-red-100 text-red-600' : isAdminUser ? 'bg-green-100 text-green-600' : 'bg-slate-100 text-slate-500'}`}>
+            {isSuperAdmin ? <Edit3 size={20} /> : isAdminUser ? <CheckCircle size={20} /> : <Lock size={20} />}
           </div>
-          <div className="flex-1">
+          <div className="flex-1 w-full sm:w-auto">
             <label className="text-sm font-bold text-slate-700 block mb-1">事工負責人權限驗證</label>
             <input
               type="password"
@@ -430,7 +464,10 @@ function AdminDashboard({ leaves, onUpdateStatus, onDeleteLeave, onResetStatus }
           </div>
         </div>
         <div className="text-sm text-slate-500 bg-slate-50 px-3 py-2 rounded-lg border border-slate-100 w-full sm:w-auto text-center sm:text-left">
-          狀態：{isAdminUser ? <span className="text-green-600 font-bold">已解鎖 (具備審批與匯出權限)</span> : <span>唯讀模式</span>}
+          狀態：
+          {isSuperAdmin ? <span className="text-red-600 font-bold">超級管理員 (完整權限)</span> : 
+           isAdminUser ? <span className="text-green-600 font-bold">已解鎖 (具備審批權限)</span> : 
+           <span>唯讀模式</span>}
         </div>
       </div>
 
@@ -452,7 +489,9 @@ function AdminDashboard({ leaves, onUpdateStatus, onDeleteLeave, onResetStatus }
                 key={leave.id} 
                 leave={leave} 
                 isAdmin={isAdminUser} 
+                isSuperAdmin={isSuperAdmin}
                 onUpdateStatus={onUpdateStatus} 
+                onEditClick={() => setEditingLeave(leave)}
                 calculateDays={calculateDays} 
               />
             ))}
@@ -460,117 +499,186 @@ function AdminDashboard({ leaves, onUpdateStatus, onDeleteLeave, onResetStatus }
         )}
       </section>
 
-      {/* 歷史記錄與報表區塊 */}
-      <section className="grid md:grid-cols-2 gap-8">
-        
-        {/* 左側：歷史記錄 */}
-        <div>
-          <div className="flex justify-between items-end mb-4">
-            <h2 className="text-xl font-bold text-slate-700">最近審批記錄</h2>
-          </div>
-          <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-            <div className="max-h-[400px] overflow-y-auto">
-              <table className="w-full text-left text-sm">
-                <thead className="bg-slate-50 border-b border-slate-200 sticky top-0 z-10">
-                  <tr>
-                    <th className="p-3 font-semibold text-slate-600">同工</th>
-                    <th className="p-3 font-semibold text-slate-600">日期</th>
-                    <th className="p-3 font-semibold text-slate-600">狀態</th>
-                    <th className="p-3 font-semibold text-slate-600 text-center">操作</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {historyLeaves.map(leave => (
-                    <tr key={leave.id} className="hover:bg-slate-50 group">
-                      <td className="p-3 font-medium">{leave.name}</td>
-                      <td className="p-3 text-slate-500 text-xs">{leave.startDate}</td>
-                      <td className="p-3">
-                        <StatusBadge status={leave.status} />
-                      </td>
-                      <td className="p-3 flex justify-center gap-2 transition-opacity">
-                        {isAdminUser ? (
-                          <>
-                            <button 
-                              onClick={() => onResetStatus(leave.id)} 
-                              className="text-slate-400 hover:text-blue-600 transition-colors p-1"
-                              title="撤銷並退回待審批"
-                            >
-                              <RotateCcw size={16} />
-                            </button>
-                            <button 
-                              onClick={() => onDeleteLeave(leave.id)} 
-                              className="text-slate-400 hover:text-red-600 transition-colors p-1"
-                              title="永久刪除紀錄"
-                            >
-                              <Trash2 size={16} />
-                            </button>
-                          </>
-                        ) : (
-                          <span className="text-slate-300" title="需要負責人權限"><Lock size={14} /></span>
-                        )}
-                      </td>
+      {/* 歷史記錄與報表區塊 (僅管理員/Super Admin可見) */}
+      {isAdminUser && (
+        <section className="grid md:grid-cols-2 gap-8 transition-all animate-fade-in">
+          
+          {/* 左側：歷史記錄 */}
+          <div className="w-full">
+            <div className="flex justify-between items-end mb-4">
+              <h2 className="text-xl font-bold text-slate-700">最近審批記錄</h2>
+            </div>
+            <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+              <div className="max-h-[400px] overflow-x-auto overflow-y-auto">
+                <table className="w-full text-left text-sm min-w-[500px]">
+                  <thead className="bg-slate-50 border-b border-slate-200 sticky top-0 z-10">
+                    <tr>
+                      <th className="p-3 font-semibold text-slate-600">同工</th>
+                      <th className="p-3 font-semibold text-slate-600">日期</th>
+                      <th className="p-3 font-semibold text-slate-600">狀態</th>
+                      <th className="p-3 font-semibold text-slate-600 text-center">操作</th>
                     </tr>
-                  ))}
-                  {historyLeaves.length === 0 && (
-                     <tr><td colSpan="4" className="p-4 text-center text-slate-400">尚無記錄</td></tr>
-                  )}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {historyLeaves.map(leave => (
+                      <tr key={leave.id} className="hover:bg-slate-50 group">
+                        <td className="p-3 font-medium whitespace-nowrap">{leave.name}</td>
+                        <td className="p-3 text-slate-500 text-xs whitespace-nowrap">{leave.startDate}</td>
+                        <td className="p-3 whitespace-nowrap">
+                          <StatusBadge status={leave.status} />
+                        </td>
+                        <td className="p-3 flex justify-center gap-2 transition-opacity">
+                          {isSuperAdmin && (
+                            <button 
+                              onClick={() => setEditingLeave(leave)} 
+                              className="text-slate-400 hover:text-indigo-600 transition-colors p-1"
+                              title="編輯紀錄"
+                            >
+                              <Edit3 size={16} />
+                            </button>
+                          )}
+                          {isAdminUser ? (
+                            <>
+                              <button 
+                                onClick={() => onResetStatus(leave.id)} 
+                                className="text-slate-400 hover:text-blue-600 transition-colors p-1"
+                                title="撤銷並退回待審批"
+                              >
+                                <RotateCcw size={16} />
+                              </button>
+                              <button 
+                                onClick={() => onDeleteLeave(leave.id)} 
+                                className="text-slate-400 hover:text-red-600 transition-colors p-1"
+                                title="永久刪除紀錄"
+                              >
+                                <Trash2 size={16} />
+                              </button>
+                            </>
+                          ) : (
+                            <span className="text-slate-300" title="需要負責人權限"><Lock size={14} /></span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                    {historyLeaves.length === 0 && (
+                       <tr><td colSpan="4" className="p-4 text-center text-slate-400">尚無記錄</td></tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
-        </div>
 
-        {/* 右側：資料匯總與匯出 */}
-        <div>
-          <div className="flex justify-between items-end mb-4">
-            <h2 className="text-xl font-bold text-slate-700 flex items-center gap-2">
-              <BarChart2 className="w-5 h-5 text-indigo-500" />
-              同工申請離澳匯總 (已批准)
-            </h2>
-            {isAdminUser && (
+          {/* 右側：資料匯總與匯出 */}
+          <div className="animate-fade-in w-full overflow-hidden">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-end mb-4 gap-2">
+              <h2 className="text-xl font-bold text-slate-700 flex items-center gap-2">
+                <BarChart2 className="w-5 h-5 text-indigo-500" />
+                同工申請匯總 (已批准)
+              </h2>
               <button 
                 onClick={exportToCSV}
-                className="flex items-center gap-1 text-sm bg-indigo-50 text-indigo-700 hover:bg-indigo-100 px-3 py-1.5 rounded-md transition-colors font-medium border border-indigo-200 animate-fade-in"
+                className="flex items-center gap-1 text-sm bg-indigo-50 text-indigo-700 hover:bg-indigo-100 px-3 py-1.5 rounded-md transition-colors font-medium border border-indigo-200 shrink-0"
               >
                 <Download size={16} /> 匯出 CSV 報表
               </button>
-            )}
+            </div>
+            
+            <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-sm min-w-[300px]">
+                    <thead className="bg-slate-50 border-b border-slate-200">
+                      <tr>
+                        <th className="p-3 font-semibold text-slate-600 whitespace-nowrap">同工</th>
+                        <th className="p-3 font-semibold text-center text-slate-600 whitespace-nowrap">總天數</th>
+                        <th className="p-3 font-semibold text-center text-blue-600 whitespace-nowrap">事工</th>
+                        <th className="p-3 font-semibold text-center text-green-600 whitespace-nowrap">私人</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {summaryData.map(stat => (
+                        <tr key={stat.name} className="hover:bg-slate-50">
+                          <td className="p-3 font-bold text-slate-700 whitespace-nowrap">{stat.name}</td>
+                          <td className="p-3 text-center font-bold bg-slate-50">{stat.total}</td>
+                          <td className="p-3 text-center text-slate-500">{stat.work || '-'}</td>
+                          <td className="p-3 text-center text-slate-500">{stat.personal || '-'}</td>
+                        </tr>
+                      ))}
+                      {summaryData.length === 0 && (
+                       <tr><td colSpan="4" className="p-4 text-center text-slate-400">尚無已批准的紀錄</td></tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
           </div>
-          
-          <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-             <table className="w-full text-left text-sm">
-                <thead className="bg-slate-50 border-b border-slate-200">
-                  <tr>
-                    <th className="p-3 font-semibold text-slate-600">同工</th>
-                    <th className="p-3 font-semibold text-center text-slate-600">總天數</th>
-                    <th className="p-3 font-semibold text-center text-blue-600">事工</th>
-                    <th className="p-3 font-semibold text-center text-green-600">私人</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {summaryData.map(stat => (
-                    <tr key={stat.name} className="hover:bg-slate-50">
-                      <td className="p-3 font-bold text-slate-700">{stat.name}</td>
-                      <td className="p-3 text-center font-bold bg-slate-50">{stat.total}</td>
-                      <td className="p-3 text-center text-slate-500">{stat.work || '-'}</td>
-                      <td className="p-3 text-center text-slate-500">{stat.personal || '-'}</td>
-                    </tr>
+        </section>
+      )}
+
+      {/* 編輯視窗 (Modal) */}
+      {editingLeave && (
+        <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 p-4 animate-fade-in" onClick={() => setEditingLeave(null)}>
+          <div className="bg-white rounded-xl p-6 max-w-md w-full shadow-xl" onClick={e => e.stopPropagation()}>
+            <h3 className="text-xl font-bold text-slate-800 flex items-center gap-2 mb-4">
+              <Edit3 className="text-red-500 w-5 h-5" />
+              編輯假單 (超級管理員)
+            </h3>
+            <form onSubmit={handleSaveEdit} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">同工姓名</label>
+                <input type="text" required className="w-full p-2 border border-slate-300 rounded outline-none focus:ring-2 focus:ring-red-500"
+                  value={editingLeave.name} onChange={e => setEditingLeave({...editingLeave, name: e.target.value})} />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">開始日期</label>
+                  <input type="date" required className="w-full p-2 border border-slate-300 rounded outline-none focus:ring-2 focus:ring-red-500"
+                    value={editingLeave.startDate} onChange={e => setEditingLeave({...editingLeave, startDate: e.target.value})} />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">結束日期</label>
+                  <input type="date" required className="w-full p-2 border border-slate-300 rounded outline-none focus:ring-2 focus:ring-red-500"
+                    value={editingLeave.endDate} onChange={e => setEditingLeave({...editingLeave, endDate: e.target.value})} />
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">申請類別</label>
+                <div className="grid grid-cols-3 gap-2">
+                  {LEAVE_TYPES.map(type => (
+                    <label key={type.id} className={`cursor-pointer border rounded p-1.5 text-center text-sm font-medium transition-all ${editingLeave.type === type.label ? 'border-red-500 bg-red-50 text-red-700 ring-1 ring-red-500' : 'border-slate-200'}`}>
+                      <input type="radio" name="edit_type" value={type.label} className="hidden" 
+                        onChange={e => setEditingLeave({...editingLeave, type: e.target.value})} />
+                      {type.label}
+                    </label>
                   ))}
-                  {summaryData.length === 0 && (
-                     <tr><td colSpan="4" className="p-4 text-center text-slate-400">尚無已批准的紀錄</td></tr>
-                  )}
-                </tbody>
-              </table>
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">申請原因</label>
+                <textarea className="w-full p-2 border border-slate-300 rounded outline-none focus:ring-2 focus:ring-red-500 h-20"
+                  value={editingLeave.reason} onChange={e => setEditingLeave({...editingLeave, reason: e.target.value})}></textarea>
+              </div>
+              <div className="flex gap-3 pt-4">
+                <button type="button" onClick={() => setEditingLeave(null)} className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-2.5 rounded-lg transition-colors">
+                  取消
+                </button>
+                <button type="submit" className="flex-1 bg-red-600 hover:bg-red-700 text-white font-bold py-2.5 rounded-lg transition-colors shadow-sm">
+                  儲存更新
+                </button>
+              </div>
+            </form>
           </div>
         </div>
-      </section>
+      )}
     </div>
   );
 }
 
 function CalendarView({ leaves }) {
   const [currentDate, setCurrentDate] = useState(new Date());
-  const [selectedLeave, setSelectedLeave] = useState(null);
+  
+  // 新增狀態：記錄點擊的是哪一天的資料
+  const [selectedDay, setSelectedDay] = useState(null);
 
   // 取得當月天數
   const getDaysInMonth = (date) => {
@@ -614,7 +722,16 @@ function CalendarView({ leaves }) {
       });
 
       return (
-        <div key={day} className="border border-slate-200 bg-white min-h-[100px] p-1 relative group hover:bg-slate-50 transition-colors">
+        <div 
+          key={day} 
+          onClick={() => {
+            // 點擊格子，如果當天有請假紀錄，就彈出單日明細
+            if (daysLeaves.length > 0) setSelectedDay({ dateStr, leaves: daysLeaves });
+          }}
+          className={`border border-slate-200 bg-white min-h-[100px] p-1 relative transition-colors
+            ${daysLeaves.length > 0 ? 'cursor-pointer hover:bg-indigo-50 hover:border-indigo-200 group' : 'hover:bg-slate-50'}
+          `}
+        >
           <span className={`text-sm font-semibold p-1 block ${new Date().toISOString().split('T')[0] === dateStr ? 'text-indigo-600' : 'text-slate-700'}`}>
             {day}
           </span>
@@ -622,14 +739,13 @@ function CalendarView({ leaves }) {
             {daysLeaves.map(leave => (
               <div 
                 key={leave.id} 
-                onClick={() => setSelectedLeave(leave)}
-                className={`cursor-pointer text-xs px-1.5 py-0.5 rounded truncate shadow-sm border-l-2
+                className={`text-xs px-1.5 py-0.5 rounded truncate shadow-sm border-l-2
                   ${leave.type === '生病' ? 'bg-red-50 border-red-400 text-red-700' : 
                     leave.type === '私人' ? 'bg-green-50 border-green-400 text-green-700' :
                     leave.type === '事工' ? 'bg-blue-50 border-blue-400 text-blue-700' :
                     'bg-gray-50 border-gray-400 text-gray-700'}
                 `}
-                title={`${leave.name}: ${leave.reason}`}
+                title={`${leave.name}: ${leave.type === '私人' ? '🔒 私人原因 (不公開)' : leave.reason}`}
               >
                 {leave.name} ({leave.type})
               </div>
@@ -660,41 +776,50 @@ function CalendarView({ leaves }) {
         {renderCalendarDays()}
       </div>
       
-      <div className="p-4 bg-slate-50 text-xs text-slate-500 flex gap-4 border-t border-slate-200">
+      <div className="p-4 bg-slate-50 text-xs text-slate-500 flex flex-wrap gap-4 border-t border-slate-200">
         <div className="flex items-center gap-1"><div className="w-3 h-3 bg-blue-100 border-l-2 border-blue-400"></div> 事工</div>
         <div className="flex items-center gap-1"><div className="w-3 h-3 bg-green-100 border-l-2 border-green-400"></div> 私人</div>
       </div>
 
-      {/* 申請詳情彈出視窗 (Modal) */}
-      {selectedLeave && (
-        <div className="fixed inset-0 bg-slate-900/40 flex items-center justify-center z-50 p-4 animate-fade-in" onClick={() => setSelectedLeave(null)}>
-          <div className="bg-white rounded-xl p-6 max-w-sm w-full shadow-xl" onClick={e => e.stopPropagation()}>
-            <div className="flex justify-between items-start mb-4">
+      {/* 單日明細彈出視窗 (Modal) */}
+      {selectedDay && (
+        <div className="fixed inset-0 bg-slate-900/40 flex items-center justify-center z-50 p-4 animate-fade-in" onClick={() => setSelectedDay(null)}>
+          <div className="bg-white rounded-xl p-6 max-w-sm w-full shadow-xl max-h-[80vh] flex flex-col" onClick={e => e.stopPropagation()}>
+            <div className="flex justify-between items-start mb-4 shrink-0">
               <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
                 <FileText className="text-indigo-500 w-5 h-5" />
-                申請詳情
+                {selectedDay.dateStr} 離澳名單
               </h3>
-              <button onClick={() => setSelectedLeave(null)} className="text-slate-400 hover:text-slate-600 transition-colors">
+              <button onClick={() => setSelectedDay(null)} className="text-slate-400 hover:text-slate-600 transition-colors">
                 <XCircle size={24} />
               </button>
             </div>
-            <div className="space-y-3 text-sm text-slate-600">
-              <p><span className="font-medium text-slate-500">同工姓名：</span><span className="font-bold text-slate-800">{selectedLeave.name}</span></p>
-              <p><span className="font-medium text-slate-500">申請類別：</span>
-                <span className={`inline-block px-2 py-0.5 rounded-full text-xs ml-1 ${LEAVE_TYPES.find(t => t.label === selectedLeave.type)?.color || 'bg-gray-100'}`}>
-                  {selectedLeave.type}
-                </span>
-              </p>
-              <p><span className="font-medium text-slate-500">日期區間：</span>{selectedLeave.startDate} ~ {selectedLeave.endDate}</p>
-              <div className="pt-2">
-                <span className="font-medium text-slate-500 block mb-1">申請原因 / 備註：</span>
-                <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 text-slate-700 whitespace-pre-wrap">
-                  {selectedLeave.reason || '無填寫'}
+            
+            <div className="overflow-y-auto space-y-4 pr-1 flex-1">
+              {selectedDay.leaves.map((leave, idx) => (
+                <div key={idx} className="bg-slate-50 rounded-lg p-3 border border-slate-100">
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="font-bold text-slate-800 text-base">{leave.name}</span>
+                    <span className={`inline-block px-2 py-0.5 rounded-full text-xs ${LEAVE_TYPES.find(t => t.label === leave.type)?.color || 'bg-gray-100'}`}>
+                      {leave.type}
+                    </span>
+                  </div>
+                  <div className="text-xs text-slate-500 mb-2">
+                    區間：{leave.startDate} ~ {leave.endDate}
+                  </div>
+                  <div className="pt-2 border-t border-slate-200">
+                    <span className="font-medium text-slate-500 text-xs block mb-1">原因：</span>
+                    <div className="text-sm text-slate-700 whitespace-pre-wrap">
+                      {/* 私人原因保護機制 */}
+                      {leave.type === '私人' ? <span className="text-amber-600 flex items-center gap-1"><Lock size={14}/> 私人原因 (不公開)</span> : (leave.reason || '無填寫')}
+                    </div>
+                  </div>
                 </div>
-              </div>
+              ))}
             </div>
-            <div className="mt-6">
-              <button onClick={() => setSelectedLeave(null)} className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-2.5 rounded-lg transition-colors shadow-sm">
+
+            <div className="mt-4 shrink-0">
+              <button onClick={() => setSelectedDay(null)} className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-2.5 rounded-lg transition-colors shadow-sm">
                 關閉
               </button>
             </div>
@@ -706,13 +831,13 @@ function CalendarView({ leaves }) {
 }
 
 // 通用組件：請假卡片
-function LeaveCard({ leave, isAdmin, onUpdateStatus, calculateDays }) {
+function LeaveCard({ leave, isAdmin, isSuperAdmin, onUpdateStatus, onEditClick, calculateDays }) {
   const typeStyle = LEAVE_TYPES.find(t => t.label === leave.type)?.color;
   const days = calculateDays ? calculateDays(leave.startDate, leave.endDate) : 1;
 
   return (
-    <div className="bg-white p-4 rounded-lg shadow-sm border border-slate-200 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 animate-fade-in">
-      <div className="flex-1">
+    <div className="bg-white p-4 rounded-lg shadow-sm border border-slate-200 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 animate-fade-in relative">
+      <div className="flex-1 w-full">
         <div className="flex items-center gap-2 mb-1">
           <span className="font-bold text-lg text-slate-800">{leave.name}</span>
           <span className={`text-xs px-2 py-0.5 rounded-full ${typeStyle}`}>
@@ -721,19 +846,29 @@ function LeaveCard({ leave, isAdmin, onUpdateStatus, calculateDays }) {
           <span className="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full font-medium">
             共 {days} 天
           </span>
+          {/* 超級管理員編輯按鈕 */}
+          {isSuperAdmin && leave.status === 'Pending' && (
+            <button onClick={onEditClick} className="ml-auto text-slate-400 hover:text-red-500 transition-colors flex items-center gap-1 text-xs font-medium bg-slate-50 px-2 py-1 rounded border border-slate-200">
+              <Edit3 size={12} /> 編輯
+            </button>
+          )}
         </div>
         <div className="text-sm text-slate-500 flex items-center gap-2 mb-2">
           <Clock size={14} />
           {leave.startDate} ~ {leave.endDate}
         </div>
-        <div className="text-sm text-slate-700 bg-slate-50 p-2 rounded">
+        <div className="text-sm text-slate-700 bg-slate-50 p-2 rounded break-words">
           <span className="font-medium text-slate-500 text-xs block mb-1">原因：</span>
-          {leave.reason}
+          {leave.type === '私人' && !isAdmin ? (
+            <span className="text-amber-600 flex items-center gap-1"><Lock size={14}/> 私人原因 (不公開)</span>
+          ) : (
+            leave.reason || '無填寫'
+          )}
         </div>
       </div>
 
       {isAdmin && leave.status === 'Pending' && (
-        <div className="flex gap-2 w-full sm:w-auto">
+        <div className="flex gap-2 w-full sm:w-auto mt-2 sm:mt-0">
           <button 
             onClick={() => onUpdateStatus(leave.id, 'Rejected')}
             className="flex-1 sm:flex-none flex items-center justify-center gap-1 px-4 py-2 border border-red-200 text-red-600 rounded-md hover:bg-red-50 transition-colors text-sm font-medium"
@@ -750,7 +885,9 @@ function LeaveCard({ leave, isAdmin, onUpdateStatus, calculateDays }) {
       )}
       
       {!isAdmin && (
-         <StatusBadge status={leave.status} />
+         <div className="mt-2 sm:mt-0 w-full sm:w-auto text-right">
+           <StatusBadge status={leave.status} />
+         </div>
       )}
     </div>
   );
